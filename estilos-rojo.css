@@ -1,0 +1,1 @@
+.numero-ganador, [data-numero]:not([data-numero="00"]) { color: #ff0000 !important; font-weight: bold !important; }

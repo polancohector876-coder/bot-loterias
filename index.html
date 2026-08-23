@@ -2,14 +2,26 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#00bcd4">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
     <title>SACATE SPORT - Terminal</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
+    <!-- REGISTRO SERVICE WORKER -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
+
     <!-- FIREBASE SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBN9HbGRgVl0NEVX0zjxMz9qrssmDAWKco",
@@ -24,58 +36,109 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         window.db = db;
-        window.firebaseFirestore = { doc, onSnapshot, setDoc, getDoc, collection, getDocs };
+        window.firebaseFirestore = { doc, onSnapshot, setDoc, getDoc, collection };
+
+        window.limitesConfig = { sueltoMax: 0, paleMax: 0, tripletaMax: 0, calientes: [] };
+
+        let miDispositivo = localStorage.getItem('nombreMiDispositivo');
+        if (!miDispositivo) {
+            miDispositivo = prompt("Nombre de este teléfono o vendedor (Ej: vendedor 2):") || "Vendedor 1";
+            localStorage.setItem('nombreMiDispositivo', miDispositivo);
+        }
+
+        setDoc(doc(db, "terminales", miDispositivo), {
+            nombre: miDispositivo,
+            ultimoAcceso: new Date().toLocaleString(),
+            activo: true
+        }, { merge: true });
+
+        onSnapshot(doc(db, "configuracion", "limites_jugadas"), (docSnap) => {
+            if (docSnap.exists()) {
+                let d = docSnap.data();
+                window.limitesConfig = {
+                    sueltoMax: parseFloat(d.sueltoMax) || 0,
+                    paleMax: parseFloat(d.paleMax) || 0,
+                    tripletaMax: parseFloat(d.tripletaMax) || 0,
+                    calientes: (d.calientes || []).map(x => String(x).replace(/[^0-9]/g, ''))
+                };
+            }
+        });
+
+        onSnapshot(doc(db, "banca", "estadoMaestro"), (docSnap) => {
+            let data = docSnap.exists() ? docSnap.data() : {};
+            let bancaCerrada = data.bancaBloqueadaMaestro === true;
+            let bloqueados = data.dispositivosBloqueados || [];
+
+            let pantallaB = document.getElementById('pantallaBloqueo');
+            let appMain = document.getElementById('appPrincipal');
+
+            if (bancaCerrada) {
+                document.getElementById('bloqueoTitulo').innerText = "🛑 BANCA CERRADA";
+                document.getElementById('bloqueoMensaje').innerText = "La administración ha suspendido las operaciones generales.";
+                pantallaB.style.display = 'flex';
+                appMain.style.display = 'none';
+            } else if (bloqueados.includes(miDispositivo)) {
+                document.getElementById('bloqueoTitulo').innerText = "🚫 TERMINAL BLOQUEADA";
+                document.getElementById('bloqueoMensaje').innerText = `El acceso para "${miDispositivo}" ha sido suspendido por la administración.`;
+                pantallaB.style.display = 'flex';
+                appMain.style.display = 'none';
+            } else {
+                pantallaB.style.display = 'none';
+                appMain.style.display = 'flex';
+            }
+        });
     </script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; user-select: none; }
-        body { background-color: #121212; display: flex; justify-content: center; align-items: center; height: 100vh; color: #fff; margin: 0; overflow: hidden; }
-        .app-container { width: 100%; max-width: 450px; height: 100vh; background-color: #1e1e1e; display: flex; flex-direction: column; position: relative; border: 1px solid #333; }
+        html, body { width: 100%; height: 100dvh; background-color: #121212; color: #fff; margin: 0; overflow: hidden; }
         
-        .top-balance-bar { background-color: #00bcd4; color: #000; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 16px; }
-        .menu-icon-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #fff; }
+        .app-container { width: 100%; max-width: 450px; height: 100dvh; margin: 0 auto; background-color: #1e1e1e; display: flex; flex-direction: column; position: relative; border: 1px solid #333; }
+        
+        .top-balance-bar { background-color: #00bcd4; color: #000; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 13px; flex-shrink: 0; }
+        .menu-icon-btn { background: none; border: none; font-size: 18px; cursor: pointer; color: #000; }
 
-        .lottery-bar { background-color: #388e3c; color: white; padding: 10px; text-align: center; font-weight: bold; font-size: 15px; cursor: pointer; border-bottom: 2px solid #2e7d32; }
+        .lottery-bar { background-color: #388e3c; color: white; padding: 4px; text-align: center; font-weight: bold; font-size: 12px; cursor: pointer; border-bottom: 2px solid #2e7d32; flex-shrink: 0; }
 
-        .inputs-grid { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 5px; padding: 10px; background-color: #2c2c2c; }
+        .inputs-grid { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 3px; padding: 3px 6px; background-color: #2c2c2c; flex-shrink: 0; }
         .input-box { display: flex; flex-direction: column; align-items: center; }
-        .input-box label { font-size: 11px; font-weight: bold; color: #aaa; margin-bottom: 4px; text-transform: uppercase; }
-        .input-box .screen-field { width: 100%; height: 45px; background: #fff; color: #000; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; border-radius: 4px; border: 2px solid #555; }
+        .input-box label { font-size: 8px; font-weight: bold; color: #aaa; margin-bottom: 1px; text-transform: uppercase; }
+        .input-box .screen-field { width: 100%; height: 28px; background: #fff; color: #000; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: bold; border-radius: 3px; border: 2px solid #555; }
         .input-box .screen-field.yellow { background: #fff59d; color: #000; }
         .input-box .screen-field.active-screen { border-color: #00bcd4; background: #e0f7fa; }
 
-        .status-bar { display: flex; justify-content: space-around; background: #222; padding: 8px 5px; border-bottom: 1px solid #444; font-size: 12px; align-items: center; }
+        .status-bar { display: flex; justify-content: space-around; background: #222; padding: 2px; border-bottom: 1px solid #444; font-size: 9px; align-items: center; flex-shrink: 0; }
         .status-item { text-align: center; color: #bbb; }
-        .status-item span { display: block; font-weight: bold; color: #fff; font-size: 14px; }
+        .status-item span { display: block; font-weight: bold; color: #fff; font-size: 11px; }
         
-        .toggles-bar { display: flex; justify-content: space-around; background: #181818; padding: 6px; font-size: 11px; color: #bbb; border-bottom: 1px solid #333; }
-        .toggle-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-        .toggle-switch { width: 34px; height: 18px; background: #555; border-radius: 9px; position: relative; cursor: pointer; transition: background 0.3s; }
+        .toggles-bar { display: flex; justify-content: space-around; background: #181818; padding: 2px; font-size: 8px; color: #bbb; border-bottom: 1px solid #333; flex-shrink: 0; }
+        .toggle-group { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+        .toggle-switch { width: 24px; height: 12px; background: #555; border-radius: 6px; position: relative; cursor: pointer; }
         .toggle-switch.active { background: #4caf50; }
-        .toggle-switch::after { content: ''; position: absolute; width: 14px; height: 14px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: transform 0.3s; }
-        .toggle-switch.active::after { transform: translateX(16px); }
+        .toggle-switch::after { content: ''; position: absolute; width: 8px; height: 8px; background: white; border-radius: 50%; top: 2px; left: 2px; }
+        .toggle-switch.active::after { transform: translateX(12px); }
 
-        .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); background: #2c2c2c; border-bottom: 1px solid #444; }
-        .qa-btn { background: #333; color: white; border: none; padding: 10px 0; font-size: 12px; font-weight: bold; border-right: 1px solid #444; cursor: pointer; text-align: center; }
+        .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); background: #2c2c2c; border-bottom: 1px solid #444; flex-shrink: 0; }
+        .qa-btn { background: #333; color: white; border: none; padding: 4px 0; font-size: 9px; font-weight: bold; border-right: 1px solid #444; cursor: pointer; text-align: center; }
 
-        #ticketList { flex: 1; overflow-y: auto; background: #181818; padding: 8px; }
-        .ticket-item { display: flex; justify-content: space-between; align-items: center; background: #252525; padding: 8px 10px; margin-bottom: 6px; border-radius: 4px; border-left: 4px solid #4caf50; font-size: 13px; }
+        #ticketList { flex: 1; overflow-y: auto; background: #181818; padding: 3px; min-height: 20px; }
+        .ticket-item { display: flex; justify-content: space-between; align-items: center; background: #252525; padding: 3px 6px; margin-bottom: 2px; border-radius: 3px; border-left: 3px solid #4caf50; font-size: 10px; }
 
-        .keypad { display: grid; grid-template-columns: repeat(4, 1fr); background: #111; gap: 1px; border-top: 1px solid #444; }
-        .key { background: #333; color: #fff; border: none; font-size: 22px; font-weight: bold; height: 55px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .keypad { display: grid; grid-template-columns: repeat(4, 1fr); background: #111; gap: 1px; border-top: 1px solid #444; flex-shrink: 0; }
+        .key { background: #333; color: #fff; border: none; font-size: 16px; font-weight: bold; height: 34px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .key.dark { background: #222; }
-        .key.enter { background: #1b5e20; grid-column: span 1; font-size: 16px; }
+        .key.enter { background: #1b5e20; grid-column: span 1; font-size: 12px; }
 
-        .bottom-action-bar { display: grid; grid-template-columns: repeat(5, 1fr); background: #222; border-top: 1px solid #444; }
-        .b-btn { background: #333; color: white; border: none; padding: 12px 0; font-size: 14px; cursor: pointer; border-right: 1px solid #444; display: flex; align-items: center; justify-content: center; }
+        .bottom-action-bar { display: grid; grid-template-columns: repeat(5, 1fr); background: #222; border-top: 1px solid #444; flex-shrink: 0; padding-bottom: max(2px, env(safe-area-inset-bottom)); }
+        .b-btn { background: #333; color: white; border: none; height: 36px; font-size: 13px; cursor: pointer; border-right: 1px solid #444; display: flex; align-items: center; justify-content: center; font-weight: bold; }
         .b-btn.green { background: #2e7d32; }
         .b-btn.red { background: #c62828; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; padding: 10px; flex-direction: column; }
-        #ticketToImage { background: #ffffff; width: 320px; padding: 20px; text-align: center; color: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 15px; }
-        #ticketToImage pre { text-align: center; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; font-size: 12px; line-height: 1.4; font-weight: bold; }
+        #ticketToImage { background: #ffffff; width: 300px; padding: 15px; text-align: center; color: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 10px; border-radius: 4px; }
+        #ticketToImage pre { text-align: center; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; font-size: 11px; line-height: 1.3; font-weight: bold; }
         
-        .history-card { background: #252525; border: 1px solid #444; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 12px; }
+        .history-card { background: #252525; border: 1px solid #444; padding: 8px; margin-bottom: 6px; border-radius: 4px; font-size: 11px; }
 
         #pantallaBloqueo { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #121212; z-index: 10000; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; }
     </style>
@@ -83,14 +146,13 @@
 <body>
 
 <div id="pantallaBloqueo">
-    <h1 id="bloqueoTitulo" style="font-size: 26px; color: #ff5252; margin-bottom: 10px;">🛑 BANCA CERRADA</h1>
-    <p id="bloqueoMensaje" style="font-size: 16px; color: #aaa;">La administración ha suspendido las operaciones.</p>
+    <h1 id="bloqueoTitulo" style="font-size: 24px; color: #ff5252; margin-bottom: 10px;">🛑 TERMINAL BLOQUEADA</h1>
+    <p id="bloqueoMensaje" style="font-size: 14px; color: #aaa;">La administración ha suspendido las operaciones.</p>
 </div>
 
 <div class="app-container" id="appPrincipal">
-    
     <div class="top-balance-bar">
-        <span id="txtBalance">Balance: $799,847,100.80</span>
+        <span id="txtBalance">Terminal: <b id="lblVendedorHeader">...</b></span>
         <button class="menu-icon-btn" onclick="abrirMenuLateral()">☰</button>
     </div>
 
@@ -118,18 +180,9 @@
     </div>
 
     <div class="toggles-bar">
-        <div class="toggle-group">
-            <span>IMPRIMIR</span>
-            <div class="toggle-switch active" id="tglImprimir" onclick="toggleSwitch('tglImprimir')"></div>
-        </div>
-        <div class="toggle-group">
-            <span>WHATSAPP</span>
-            <div class="toggle-switch active" id="tglWsp" onclick="toggleSwitch('tglWsp')"></div>
-        </div>
-        <div class="toggle-group">
-            <span>DESC.</span>
-            <div class="toggle-switch" id="tglDesc" onclick="toggleSwitch('tglDesc')"></div>
-        </div>
+        <div class="toggle-group"><span>IMPRIMIR</span><div class="toggle-switch active" id="tglImprimir" onclick="toggleSwitch('tglImprimir')"></div></div>
+        <div class="toggle-group"><span>WHATSAPP</span><div class="toggle-switch active" id="tglWsp" onclick="toggleSwitch('tglWsp')"></div></div>
+        <div class="toggle-group"><span>DESC.</span><div class="toggle-switch" id="tglDesc" onclick="toggleSwitch('tglDesc')"></div></div>
     </div>
 
     <div class="quick-actions">
@@ -142,25 +195,11 @@
     <div id="ticketList"></div>
 
     <div class="keypad">
-        <button class="key" onclick="teclaNum('7')">7</button>
-        <button class="key" onclick="teclaNum('8')">8</button>
-        <button class="key" onclick="teclaNum('9')">9</button>
-        <button class="key dark" onclick="teclaNum('del')">←</button>
-
-        <button class="key" onclick="teclaNum('4')">4</button>
-        <button class="key" onclick="teclaNum('5')">5</button>
-        <button class="key" onclick="teclaNum('6')">6</button>
-        <button class="key dark" onclick="teclaNum('-')">-</button>
-
-        <button class="key" onclick="teclaNum('1')">1</button>
-        <button class="key" onclick="teclaNum('2')">2</button>
-        <button class="key" onclick="teclaNum('3')">3</button>
-        <button class="key dark" onclick="teclaNum('+')">+</button>
-
-        <button class="key" onclick="teclaNum('.')">.</button>
-        <button class="key" onclick="teclaNum('0')">0</button>
-        <button class="key" onclick="teclaNum('00')">00</button>
-        <button class="key enter" onclick="agregarJugadaPro()">ENTER</button>
+        <button class="key" onclick="teclaNum('7')">7</button><button class="key" onclick="teclaNum('8')">8</button><button class="key" onclick="teclaNum('9')">9</button><button class="key dark" onclick="teclaNum('del')">←</button>
+        <button class="key" onclick="teclaNum('4')">4</button><button class="key" onclick="teclaNum('5')">5</button><button class="key" onclick="teclaNum('6')">6</button><button class="key dark" onclick="teclaNum('-')">-</button>
+        <button class="key" onclick="teclaNum('1')">1</button><button class="key" onclick="teclaNum('2')">2</button><button class="key" onclick="teclaNum('3')">3</button><button class="key dark" onclick="teclaNum('+')">+</button>
+        <button class="key" onclick="teclaNum('.')">.</button><button class="key" onclick="teclaNum('0')">0</button><button class="key" onclick="teclaNum('00')">00</button>
+        <button class="key enter" onclick="ejecutarAgregarJugada()">ENTER</button>
     </div>
 
     <div class="bottom-action-bar">
@@ -174,125 +213,81 @@
 
 <div class="modal" id="modal" style="display:none;">
     <div id="ticketToImage"><pre id="receiptContent"></pre></div>
-    <div style="width: 320px; display: flex; flex-direction: column; gap: 10px;">
-        <button style="padding:14px; background:#4caf50; color:white; border:none; font-weight:bold; cursor:pointer; border-radius:4px;" onclick="compartirImagen()">📲 Compartir Imagen / WSP</button>
-        <button style="padding:12px; background:#333; color:white; border:none; cursor:pointer; border-radius:4px;" onclick="reiniciarVenta()">Cerrar / Nuevo</button>
+    <div style="width: 300px; display: flex; flex-direction: column; gap: 6px;">
+        <button style="padding:10px; background:#4caf50; color:white; border:none; font-weight:bold; cursor:pointer; border-radius:4px; font-size:13px;" onclick="compartirImagen()">📲 Compartir Imagen / WSP</button>
+        <button id="btnCopiarDesdeModal" style="padding:8px; background:#ff9800; color:#000; border:none; font-weight:bold; cursor:pointer; border-radius:4px; font-size:12px;" onclick="copiarTicketActualModal()">📋 Copiar Jugadas al Terminal</button>
+        <button style="padding:8px; background:#333; color:white; border:none; cursor:pointer; border-radius:4px; font-size:12px;" onclick="reiniciarVenta()">Cerrar / Nueva Venta</button>
     </div>
 </div>
 
 <div class="modal" id="modalLoteria" style="display:none;">
-    <div style="background:#222; width:340px; padding:20px; border-radius:8px; border:1px solid #444;">
-        <h3 style="color:#00bcd4; margin-bottom:15px; text-align:center;">Seleccionar Lotería</h3>
-        <div id="listaLoteriasModal" style="display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto;"></div>
-        <button style="margin-top:15px; width:100%; padding:10px; background:#c62828; color:#fff; border:none; border-radius:4px;" onclick="cerrarSelectorLoteria()">Cancelar</button>
+    <div style="background:#222; width:320px; padding:15px; border-radius:8px; border:1px solid #444;">
+        <h3 style="color:#00bcd4; margin-bottom:12px; text-align:center;">Seleccionar Lotería</h3>
+        <div id="listaLoteriasModal" style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto;"></div>
+        <button style="margin-top:12px; width:100%; padding:8px; background:#c62828; color:#fff; border:none; border-radius:4px;" onclick="cerrarSelectorLoteria()">Cancelar</button>
     </div>
 </div>
 
 <div class="modal" id="modalMenuLateral" style="display:none;">
-    <div style="background:#1e1e1e; width:380px; height:85vh; padding:15px; border-radius:8px; border:1px solid #00bcd4; display:flex; flex-direction:column;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #444; padding-bottom:8px;">
-            <h3 style="color:#00bcd4; font-size:16px;">☰ Menú y Administración</h3>
-            <button onclick="cerrarMenuLateral()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">✕</button>
+    <div style="background:#1e1e1e; width:340px; height:85vh; padding:12px; border-radius:8px; border:1px solid #00bcd4; display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #444; padding-bottom:6px;">
+            <h3 style="color:#00bcd4; font-size:15px;">☰ Historial y Tickets</h3>
+            <button onclick="cerrarMenuLateral()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;">✕</button>
         </div>
 
-        <div style="display:flex; gap:5px; margin-bottom:10px; flex-wrap:wrap;">
-            <button id="tabBtnBalances" onclick="cambiarTabMenu('balances')" style="flex:1; padding:8px; background:#00bcd4; color:#000; border:none; font-weight:bold; border-radius:4px; cursor:pointer; font-size:11px;">Balances</button>
-            <button id="tabBtnTickets" onclick="cambiarTabMenu('tickets')" style="flex:1; padding:8px; background:#333; color:#fff; border:none; font-weight:bold; border-radius:4px; cursor:pointer; font-size:11px;">Tickets</button>
-            <button onclick="abrirPestañaResultadosEnVivo()" style="flex:1; padding:8px; background:#4caf50; color:#fff; border:none; font-weight:bold; border-radius:4px; cursor:pointer; font-size:11px;">🏆 Resultados</button>
-            <button onclick="location.href='admin.html'" style="flex:1; padding:8px; background:#ff9800; color:#000; border:none; font-weight:bold; border-radius:4px; cursor:pointer; font-size:11px;">📊 Admin</button>
+        <div style="display:flex; gap:4px; margin-bottom:8px;">
+            <button id="tabBtnBalances" onclick="cambiarTabMenu('balances')" style="flex:1; padding:6px; background:#333; color:#fff; border:none; font-weight:bold; border-radius:4px; font-size:10px; cursor:pointer;">Balances</button>
+            <button id="tabBtnTickets" onclick="cambiarTabMenu('tickets')" style="flex:1; padding:6px; background:#00bcd4; color:#000; border:none; font-weight:bold; border-radius:4px; font-size:10px; cursor:pointer;">Tickets</button>
         </div>
 
-        <div id="seccionBalances" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
-        <div id="seccionTickets" style="flex:1; overflow-y:auto; display:none; flex-direction:column; gap:6px;"></div>
-
-        <button style="margin-top:12px; width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="cerrarMenuLateral()">Cerrar</button>
-    </div>
-</div>
-
-<div class="modal" id="modalResultadosEnVivo" style="display:none;">
-    <div style="background:#1e1e1e; width:380px; height:85vh; padding:15px; border-radius:8px; border:1px solid #00bcd4; display:flex; flex-direction:column;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #444; padding-bottom:8px;">
-            <h3 style="color:#00bcd4; font-size:16px;">🏆 Resultados de Loterías</h3>
-            <button onclick="cerrarPestañaResultadosEnVivo()" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">✕</button>
+        <div id="contenedorFiltroFecha" style="background:#252525; padding:6px; border-radius:4px; margin-bottom:6px; display:none; align-items:center; justify-content:space-between;">
+            <label style="font-size:10px; color:#aaa; font-weight:bold;">📅 FECHA:</label>
+            <input type="date" id="inputFiltroFecha" onchange="renderizarHistorialTickets()" style="background:#111; color:#00bcd4; border:1px solid #555; padding:4px; border-radius:4px; font-weight:bold; font-size:11px;">
+            <button onclick="resetearFiltroFecha()" style="background:#444; color:#fff; border:none; padding:4px 6px; border-radius:4px; font-size:10px; cursor:pointer;">Hoy</button>
         </div>
-        <div id="contenedorTarjetasResultados" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
-            <p style="color:#aaa; text-align:center; margin-top:20px;">Cargando resultados en vivo...</p>
-        </div>
-        <button style="margin-top:12px; width:100%; padding:10px; background:#333; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="cerrarPestañaResultadosEnVivo()">Cerrar</button>
+
+        <div id="seccionBalances" style="flex:1; overflow-y:auto; display:none; flex-direction:column; gap:4px;"></div>
+        <div id="seccionTickets" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+
+        <button style="margin-top:8px; width:100%; padding:8px; background:#333; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="cerrarMenuLateral()">Cerrar</button>
     </div>
 </div>
 
 <script>
-    let miDispositivo = localStorage.getItem('nombreMiDispositivo');
-    if (!miDispositivo) {
-        miDispositivo = prompt("Ingrese el nombre de este teléfono o vendedor (Ej: Vendedor 1):") || "Terminal 1";
-        localStorage.setItem('nombreMiDispositivo', miDispositivo);
-    }
-
-    setTimeout(() => {
-        if (window.db && window.firebaseFirestore) {
-            const { doc, onSnapshot } = window.firebaseFirestore;
-            onSnapshot(doc(window.db, "banca", "estadoMaestro"), (docSnap) => {
-                let data = docSnap.exists() ? docSnap.data() : {};
-                let bancaCerrada = data.bancaBloqueadaMaestro === true;
-                let bloqueados = data.dispositivosBloqueados || [];
-
-                let pantallaB = document.getElementById('pantallaBloqueo');
-                let appMain = document.getElementById('appPrincipal');
-
-                if (bancaCerrada) {
-                    document.getElementById('bloqueoTitulo').innerText = "🛑 BANCA CERRADA";
-                    document.getElementById('bloqueoMensaje').innerText = "La administración ha suspendido las operaciones de emergencia.";
-                    pantallaB.style.display = 'flex';
-                    appMain.style.display = 'none';
-                } else if (bloqueados.includes(miDispositivo)) {
-                    document.getElementById('bloqueoTitulo').innerText = "🚫 ACCESO DENEGADO";
-                    document.getElementById('bloqueoMensaje').innerText = `Este teléfono ("${miDispositivo}") ha sido desactivado.`;
-                    pantallaB.style.display = 'flex';
-                    appMain.style.display = 'none';
-                } else {
-                    pantallaB.style.display = 'none';
-                    appMain.style.display = 'flex';
-                }
-            });
-        }
-    }, 1000);
+    let miDispositivo = localStorage.getItem('nombreMiDispositivo') || "Vendedor 1";
+    document.getElementById('lblVendedorHeader').innerText = miDispositivo;
 
     let campoActivo = 'numero';
     let valNumero = '';
     let valMonto = '';
     let listaJugadas = [];
-    let loteriaSeleccionada = "";
+    let loteriaSeleccionada = "Leidsa";
+    let ultimoTicketGenerado = null;
 
     let balancesNumeros = JSON.parse(localStorage.getItem('balancesNumerosRomasport')) || {};
 
     const horariosCierre = {
-        "Anguila 10 AM": "09:50", "Gana Más": "14:20", "Anguila 1 PM": "12:50", "Lotería Real": "12:45",
-        "New York Tarde": "14:20", "Leidsa": "20:45", "La Primera Día": "11:50", "La Primera Noche": "19:50",
-        "Anguila 6 PM": "17:50", "Lotería Nacional": "20:50", "New York Noche": "22:20", "Anguila 9 PM": "20:50",
-        "La Suerte Tarde": "12:20", "La Suerte Noche": "17:50", "King Lottery Tarde": "13:20", "King Lottery Noche": "19:20",
-        "LA SUERTE PM": "18:00"
+        "NewYorkTarde": "14:20", "FloridaTarde": "14:20", "GanaMas": "14:20", "Real": "12:45",
+        "Leidsa": "20:45", "PrimeraDia": "11:50", "PrimeraNoche": "19:50", "Nacional": "20:50",
+        "NewYorkNoche": "22:20", "FloridaNoche": "22:20", "LaSuerte": "18:00", "Loteka": "20:00", "LoteDom": "18:00"
     };
 
     function obtenerLoteriasAbiertas() {
         let ahora = new Date();
-        let horaActualMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+        let minActual = ahora.getHours() * 60 + ahora.getMinutes();
         let abiertas = [];
         for (let lot in horariosCierre) {
             let [h, m] = horariosCierre[lot].split(':').map(Number);
-            if (horaActualMinutos <= (h * 60 + m)) abiertas.push(lot);
+            if (minActual <= (h * 60 + m)) abiertas.push(lot);
         }
         return abiertas;
     }
 
-    function verificarLoteriaInicial() {
-        let abiertas = obtenerLoteriasAbiertas();
-        if (abiertas.length > 0 && !abiertas.includes(loteriaSeleccionada)) {
-            loteriaSeleccionada = abiertas[0];
-            document.getElementById('lblLoteriaActiva').innerText = loteriaSeleccionada;
-        }
+    let abiertasInit = obtenerLoteriasAbiertas();
+    if (abiertasInit.length > 0) {
+        loteriaSeleccionada = abiertasInit[0];
     }
-    verificarLoteriaInicial();
+    document.getElementById('lblLoteriaActiva').innerText = loteriaSeleccionada;
 
     function obtenerBalanceNumero(num) {
         if (!num) return 200.00;
@@ -303,22 +298,15 @@
     function actualizarPantallaCampos() {
         document.getElementById('screenNumero').innerText = valNumero;
         document.getElementById('screenMonto').innerText = valMonto;
-
         let dispEl = document.getElementById('screenDisponible');
         if (valNumero.length > 0) {
             let bal = obtenerBalanceNumero(valNumero);
-            if (bal <= 0) {
-                dispEl.innerText = "SIN FONDO";
-                dispEl.style.color = '#ff5252';
-            } else {
-                dispEl.innerText = bal.toFixed(2);
-                dispEl.style.color = '#000';
-            }
+            dispEl.innerText = bal <= 0 ? "SIN FONDO" : bal.toFixed(2);
+            dispEl.style.color = bal <= 0 ? '#ff5252' : '#000';
         } else {
             dispEl.innerText = "200.00";
             dispEl.style.color = '#000';
         }
-
         document.getElementById('screenNumero').className = campoActivo === 'numero' ? 'screen-field active-screen' : 'screen-field';
         document.getElementById('screenMonto').className = campoActivo === 'monto' ? 'screen-field yellow active-screen' : 'screen-field yellow';
     }
@@ -339,27 +327,92 @@
 
     function borrarTodoActual() { valNumero = ''; valMonto = ''; campoActivo = 'numero'; actualizarPantallaCampos(); }
 
-    function agregarJugadaPro() {
+    async function ejecutarAgregarJugada() {
         let abiertas = obtenerLoteriasAbiertas();
         if (!abiertas.includes(loteriaSeleccionada)) {
             alert(`❌ La lotería "${loteriaSeleccionada}" ya cerró.`);
             return;
         }
-        if (!valNumero || !valMonto) { alert("Ingrese número y monto."); return; }
+        if (!valNumero || !valMonto) { 
+            alert("Ingrese número y monto."); 
+            return; 
+        }
 
         let montoInt = parseFloat(valMonto);
-        let balanceActual = obtenerBalanceNumero(valNumero);
-
-        if (balanceActual <= 0 || montoInt > balanceActual) {
-            alert(`❌ El número ${valNumero} está SIN FONDO o supera el saldo disponible ($${balanceActual.toFixed(2)}).`);
+        if (isNaN(montoInt) || montoInt <= 0) {
+            alert("Monto inválido.");
             return;
         }
 
-        balancesNumeros[valNumero] = balanceActual - montoInt;
+        let rawNum = String(valNumero).replace(/[^0-9]/g, '');
+        let len = rawNum.length;
+
+        if (window.db && window.firebaseFirestore) {
+            try {
+                let docSnap = await window.firebaseFirestore.getDoc(window.firebaseFirestore.doc(window.db, "configuracion", "limites_jugadas"));
+                if (docSnap.exists()) {
+                    let d = docSnap.data();
+                    window.limitesConfig = {
+                        sueltoMax: parseFloat(d.sueltoMax) || 0,
+                        paleMax: parseFloat(d.paleMax) || 0,
+                        tripletaMax: parseFloat(d.tripletaMax) || 0,
+                        calientes: (d.calientes || []).map(x => String(x).replace(/[^0-9]/g, ''))
+                    };
+                }
+            } catch(e) {}
+        }
+
+        let cfg = window.limitesConfig || {};
+        let listaCalientes = (cfg.calientes || []).map(x => String(x).replace(/[^0-9]/g, ''));
+
+        let estaBloqueado = listaCalientes.includes(rawNum);
+        if (!estaBloqueado && len === 4) {
+            let parInvertido = rawNum.substring(2, 4) + rawNum.substring(0, 2);
+            if (listaCalientes.includes(parInvertido)) {
+                estaBloqueado = true;
+            }
+        }
+
+        if (estaBloqueado) {
+            let tipoNom = len === 4 ? 'El Palé' : (len === 6 ? 'La Tripleta' : 'El Número');
+            alert(`🛑 ${tipoNom} (${rawNum}) está BLOQUEADO / CALIENTE por la administración.`);
+            return;
+        }
+
+        let sMax = parseFloat(cfg.sueltoMax) || 0;
+        let pMax = parseFloat(cfg.paleMax) || 0;
+        let tMax = parseFloat(cfg.tripletaMax) || 0;
+
+        if (len === 2 && sMax > 0 && montoInt > sMax) {
+            alert(`🛑 LÍMITE SUPERADO: Máximo permitido para Punto/Quiniela es $${sMax.toFixed(2)}.`);
+            return;
+        }
+        if (len === 4 && pMax > 0 && montoInt > pMax) {
+            alert(`🛑 LÍMITE SUPERADO: Máximo permitido para Palé es $${pMax.toFixed(2)}.`);
+            return;
+        }
+        if (len === 6 && tMax > 0 && montoInt > tMax) {
+            alert(`🛑 LÍMITE SUPERADO: Máximo permitido para Tripleta es $${tMax.toFixed(2)}.`);
+            return;
+        }
+
+        let balanceActual = obtenerBalanceNumero(rawNum);
+        if (balanceActual <= 0) {
+            alert(`❌ El número/jugada ${rawNum} está SIN FONDO.`);
+            return;
+        }
+        if (montoInt > balanceActual) {
+            alert(`❌ Saldo insuficiente para ${rawNum}. Disponible: $${balanceActual.toFixed(2)}.`);
+            return;
+        }
+
+        balancesNumeros[rawNum] = balanceActual - montoInt;
         localStorage.setItem('balancesNumerosRomasport', JSON.stringify(balancesNumeros));
 
-        listaJugadas.push({ lot: loteriaSeleccionada, num: valNumero, monto: valMonto });
-        valNumero = ''; valMonto = ''; campoActivo = 'numero';
+        listaJugadas.push({ lot: loteriaSeleccionada, num: rawNum, monto: valMonto });
+        valNumero = ''; 
+        valMonto = ''; 
+        campoActivo = 'numero';
         actualizarPantallaCampos();
         renderizarListaJugadasPro();
     }
@@ -372,8 +425,8 @@
             total += parseFloat(item.monto);
             container.innerHTML += `
                 <div class="ticket-item">
-                    <span><b>${item.lot}</b> | Num: <b>${item.num}</b> - $${item.monto}</span>
-                    <button onclick="eliminarJugadaPro(${idx})" style="background:#c62828; color:#fff; border:none; padding:4px 8px; border-radius:3px; cursor:pointer;">✕</button>
+                    <span><b>"${item.monto || item.total || item.valor || "10.00"}"</span>
+                    <button onclick="eliminarJugadaPro(${idx})" style="background:#c62828; color:#fff; border:none; padding:2px 5px; border-radius:3px; cursor:pointer;">✕</button>
                 </div>`;
         });
         document.getElementById('lblTotalVenta').innerText = `$${total.toFixed(2)}`;
@@ -409,7 +462,6 @@
     }
 
     function toggleSwitch(id) { document.getElementById(id).classList.toggle('active'); }
-
     function abrirSelectorLoteria() {
         let abiertas = obtenerLoteriasAbiertas();
         let modal = document.getElementById('modalLoteria');
@@ -419,59 +471,23 @@
             lista.innerHTML = '<p style="color:#ff5252; text-align:center;">Todas cerradas por hoy.</p>';
         } else {
             abiertas.forEach(lot => {
-                lista.innerHTML += `<button style="padding:12px; background:#333; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="seleccionarLoteria('${lot}')">${lot} (Cierra ${horariosCierre[lot]})</button>`;
+                lista.innerHTML += `<button style="padding:8px; background:#333; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="seleccionarLoteria('${lot}')">${lot} (Cierra ${horariosCierre[lot]})</button>`;
             });
         }
         modal.style.display = 'flex';
     }
-
     function seleccionarLoteria(lot) { loteriaSeleccionada = lot; document.getElementById('lblLoteriaActiva').innerText = lot; cerrarSelectorLoteria(); }
     function cerrarSelectorLoteria() { document.getElementById('modalLoteria').style.display = 'none'; }
-
-    function abrirMenuLateral() { cambiarTabMenu('balances'); document.getElementById('modalMenuLateral').style.display = 'flex'; }
+    
+    function abrirMenuLateral() { 
+        cambiarTabMenu('tickets'); 
+        document.getElementById('modalMenuLateral').style.display = 'flex'; 
+    }
     function cerrarMenuLateral() { document.getElementById('modalMenuLateral').style.display = 'none'; }
 
-    function abrirPestañaResultadosEnVivo() {
-        cerrarMenuLateral();
-        document.getElementById('modalResultadosEnVivo').style.display = 'flex';
-        cargarResultadosAutomaticosApp();
-    }
-
-    function cerrarPestañaResultadosEnVivo() {
-        document.getElementById('modalResultadosEnVivo').style.display = 'none';
-    }
-
-    async function cargarResultadosAutomaticosApp() {
-        let contenedor = document.getElementById('contenedorTarjetasResultados');
-        contenedor.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:20px;">Conectando con resultados en vivo...</p>';
-
-        if (window.db && window.firebaseFirestore) {
-            try {
-                const { collection, getDocs } = window.firebaseFirestore;
-                let querySnapshot = await getDocs(collection(window.db, "resultados"));
-                contenedor.innerHTML = '';
-                
-                if (querySnapshot.empty) {
-                    contenedor.innerHTML = '<p style="color:#ff5252; text-align:center; margin-top:20px;">Esperando sincronización automática...</p>';
-                    return;
-                }
-
-                querySnapshot.forEach((docSnap) => {
-                    let r = docSnap.data();
-                    contenedor.innerHTML += `
-                        <div style="background:#252525; border:1px solid #444; padding:12px; border-radius:6px; display:flex; flex-direction:column; gap:8px; margin-bottom:8px;">
-                            <div style="font-weight:bold; color:#00bcd4; font-size:14px; border-bottom:1px solid #333; padding-bottom:4px;">${r.loteria || docSnap.id}</div>
-                            <div style="display:flex; justify-content:space-around; background:#111; padding:10px; border-radius:6px; text-align:center;">
-                                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;"><span style="font-size:10px; color:#4caf50;">1ro</span><div style="width:36px; height:36px; background:#2e7d32; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:15px;">${r.p1 || '--'}</div></div>
-                                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;"><span style="font-size:10px; color:#ffeb3b;">2do</span><div style="width:36px; height:36px; background:#f57c00; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:15px;">${r.p2 || '--'}</div></div>
-                                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;"><span style="font-size:10px; color:#00bcd4;">3ro</span><div style="width:36px; height:36px; background:#00838f; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:15px;">${r.p3 || '--'}</div></div>
-                            </div>
-                        </div>`;
-                });
-            } catch (e) {
-                contenedor.innerHTML = '<p style="color:#ff5252; text-align:center; margin-top:20px;">Error al conectar con los resultados.</p>';
-            }
-        }
+    function resetearFiltroFecha() {
+        document.getElementById('inputFiltroFecha').value = new Date().toISOString().split('T')[0];
+        renderizarHistorialTickets();
     }
 
     function cambiarTabMenu(tab) {
@@ -479,72 +495,174 @@
         let btnT = document.getElementById('tabBtnTickets');
         let secB = document.getElementById('seccionBalances');
         let secT = document.getElementById('seccionTickets');
+        let filtroF = document.getElementById('contenedorFiltroFecha');
+
         if (tab === 'balances') {
             btnB.style.background = '#00bcd4'; btnB.style.color = '#000';
             btnT.style.background = '#333'; btnT.style.color = '#fff';
             secB.style.display = 'flex'; secT.style.display = 'none';
-            let container = document.getElementById('seccionBalances'); container.innerHTML = '';
+            filtroF.style.display = 'none';
+
+            secB.innerHTML = '';
             Object.keys(balancesNumeros).forEach(num => {
                 let saldo = balancesNumeros[num];
-                container.innerHTML += `<div style="background:#282828; padding:10px; border-radius:4px; display:flex; justify-content:space-between; font-size:13px;"><span>Número: <b>${num}</b></span><span style="color:${saldo <= 0 ? '#ff5252' : '#4caf50'}; font-weight:bold;">${saldo <= 0 ? 'SIN FONDO' : `$${saldo.toFixed(2)}`}</span></div>`;
+                secB.innerHTML += `<div style="background:#282828; padding:8px; border-radius:4px; display:flex; justify-content:space-between; font-size:12px;"><span>Número: <b>${num}</b></span><span style="color:${saldo <= 0 ? '#ff5252' : '#4caf50'}; font-weight:bold;">${saldo <= 0 ? 'SIN FONDO' : `$${saldo.toFixed(2)}`}</span></div>`;
             });
         } else {
             btnT.style.background = '#00bcd4'; btnT.style.color = '#000';
             btnB.style.background = '#333'; btnB.style.color = '#fff';
             secT.style.display = 'flex'; secB.style.display = 'none';
-            let container = document.getElementById('seccionTickets'); container.innerHTML = '';
-            let historial = JSON.parse(localStorage.getItem('historialRomasport')) || [];
-            
-            let ahoraMismo = Date.now();
-            const CINCO_MINUTOS_MS = 5 * 60 * 1000;
+            filtroF.style.display = 'flex';
 
-            historial.forEach((t, idx) => {
-                let tiempoTranscurrido = ahoraMismo - (t.timestamp || 0);
-                let puedeCancelar = !t.cancelado && (tiempoTranscurrido <= CINCO_MINUTOS_MS);
-                let estadoCancelacionHTML = '';
-
-                if (t.cancelado) {
-                    estadoCancelacionHTML = '<b style="color:red; font-size:11px;">CANCELADO</b>';
-                } else if (puedeCancelar) {
-                    let minsRest = Math.ceil((CINCO_MINUTOS_MS - tiempoTranscurrido) / 60000);
-                    estadoCancelacionHTML = `<button onclick="cancelarTicketMenu(${idx})" style="background:#c62828; color:#fff; border:none; padding:3px 6px; border-radius:3px; cursor:pointer; font-size:10px;">Cancelar (${minsRest}m)</button>`;
-                } else {
-                    estadoCancelacionHTML = '<span style="color:#777; font-size:10px;">Plazo expirado</span>';
-                }
-
-                container.innerHTML += `
-                    <div class="history-card" style="${t.cancelado ? 'opacity:0.6; text-decoration:line-through;' : ''}">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                            <b>Ticket #${t.id}</b>
-                            <span style="background:#2e7d32; color:#fff; padding:2px 5px; border-radius:3px; font-size:10px;">PENDIENTE</span>
-                        </div>
-                        <div>${t.fecha}</div>
-                        <div style="color:#aaa; margin:3px 0;">${t.items.map(i => `${i.lot}: ${i.j} ($${i.m})`).join(', ')}</div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-                            <b>Total: $${t.total.toFixed(2)}</b>
-                            ${estadoCancelacionHTML}
-                        </div>
-                    </div>`;
-            });
+            if (!document.getElementById('inputFiltroFecha').value) {
+                document.getElementById('inputFiltroFecha').value = new Date().toISOString().split('T')[0];
+            }
+            renderizarHistorialTickets();
         }
     }
 
-    function cancelarTicketMenu(idx) {
+    function renderizarHistorialTickets() {
+        let secT = document.getElementById('seccionTickets');
+        secT.innerHTML = '';
         let historial = JSON.parse(localStorage.getItem('historialRomasport')) || [];
+        let ahoraMismo = Date.now();
+        const CINCO_MINUTOS_MS = 5 * 60 * 1000;
+
+        let fechaSeleccionada = document.getElementById('inputFiltroFecha').value;
+
+        let filtrados = historial.filter(t => {
+            if (!fechaSeleccionada) return true;
+            let d = new Date(t.timestamp || 0);
+            let yyyy = d.getFullYear();
+            let mm = String(d.getMonth() + 1).padStart(2, '0');
+            let dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}` === fechaSeleccionada;
+        });
+
+        let totalVentasFecha = 0;
+        filtrados.forEach(t => { if (!t.cancelado) totalVentasFecha += t.total; });
+
+        secT.innerHTML += `
+            <div style="background:#00bcd4; color:#000; padding:8px; border-radius:4px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span>VENTAS DEL DÍA:</span>
+                <span style="font-size:13px;">$${totalVentasFecha.toFixed(2)}</span>
+            </div>`;
+
+        if (filtrados.length === 0) {
+            secT.innerHTML += '<p style="color:#aaa; text-align:center; margin-top:20px;">No hay tickets para esta fecha.</p>';
+            return;
+        }
+
+        filtrados.forEach((t) => {
+            let tiempoTranscurrido = ahoraMismo - (t.timestamp || 0);
+            let puedeCancelar = !t.cancelado && (tiempoTranscurrido <= CINCO_MINUTOS_MS);
+            let estadoCancelacionHTML = '';
+
+            if (t.cancelado) {
+                estadoCancelacionHTML = '<b style="color:red; font-size:10px;">CANCELADO</b>';
+            } else if (puedeCancelar) {
+                let minsRest = Math.ceil((CINCO_MINUTOS_MS - tiempoTranscurrido) / 60000);
+                estadoCancelacionHTML = `<button onclick="cancelarTicketPorId(${t.id})" style="background:#c62828; color:#fff; border:none; padding:2px 5px; border-radius:3px; cursor:pointer; font-size:9px;">Cancelar (${minsRest}m)</button>`;
+            } else {
+                estadoCancelacionHTML = '<span style="color:#777; font-size:9px;">Plazo expirado</span>';
+            }
+
+            let jugadasDetalle = t.items.map(i => `
+                <div style="display:flex; justify-content:space-between; background:#181818; padding:2px 4px; border-radius:3px; margin-top:2px; font-size:10px; color:#ddd;">
+                    <span>🎲 <b>${i.lot}</b></span>
+                    <span>Núm: <b>${i.j}</b></span>
+                    <span style="color:#4caf50; font-weight:bold;">$${i.m}</span>
+                </div>
+            `).join('');
+
+            secT.innerHTML += `
+                <div class="history-card" style="${t.cancelado ? 'opacity:0.6; text-decoration:line-through;' : ''}">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                        <b>Ticket #${t.id}</b>
+                        <div style="display:flex; gap:4px; align-items:center;">
+                            <button onclick="verTicketDetallado(${t.id})" style="background:#00bcd4; color:#000; border:none; padding:2px 4px; border-radius:3px; cursor:pointer; font-size:9px; font-weight:bold;">👁 Ver</button>
+                            <button onclick="repetirTicketPorId(${t.id})" style="background:#ff9800; color:#000; border:none; padding:2px 4px; border-radius:3px; cursor:pointer; font-size:9px; font-weight:bold;">📋 Copiar</button>
+                            <span style="background:${t.cancelado ? '#c62828' : '#2e7d32'}; color:#fff; padding:1px 4px; border-radius:3px; font-size:9px;">${t.cancelado ? 'ANULADO' : 'REGISTRADO'}</span>
+                        </div>
+                    </div>
+                    <div style="font-size:9px; color:#aaa; margin-bottom:2px;">${t.fecha} | Vendedor: <b>${t.vendedor || 'Terminal'}</b></div>
+                    <div style="display:flex; flex-direction:column; gap:1px; margin:2px 0;">${jugadasDetalle}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; border-top:1px solid #333; padding-top:2px;">
+                        <b>Total: $${t.total.toFixed(2)}</b>
+                        ${estadoCancelacionHTML}
+                    </div>
+                </div>`;
+        });
+    }
+
+    function verTicketDetallado(id) {
+        let historial = JSON.parse(localStorage.getItem('historialRomasport')) || [];
+        let t = historial.find(x => x.id === id);
+        if (!t) return;
+
+        ultimoTicketGenerado = t;
+
+        let texto = `================================\n          SACATE SPORT          \n         ** ORIGINAL **         \n================================\n Fecha: ${t.fecha}\n Vendedor: ${t.vendedor}\n Ticket #: ${t.id}\n--------------------------------\n`;
+        t.items.forEach(i => { texto += ` Lotería: ${i.lot}\n Núm: ${i.j}      Monto: $${i.m}\n\n`; });
+        texto += `--------------------------------\n       TOTAL A PAGAR: $${t.total.toFixed(2)}\n================================\n            PREMIOS:            \n      1ra:60 | 2da:24 | 3ra:12    \n    PALÉ: 1300 | TRIPLETA: 10000  \n================================\n     ¡SIN TICKET NO SE PAGA!    \n================================`;
+
+        document.getElementById('receiptContent').innerText = texto;
+        cerrarMenuLateral();
+        document.getElementById('modal').style.display = 'flex';
+    }
+
+    function repetirTicketPorId(id) {
+        let historial = JSON.parse(localStorage.getItem('historialRomasport')) || [];
+        let t = historial.find(x => x.id === id);
+        if (!t || !t.items) return;
+
+        listaJugadas = [];
+        t.items.forEach(i => {
+            let balanceActual = obtenerBalanceNumero(i.j);
+            let montoInt = parseFloat(i.m);
+            if (balanceActual >= montoInt) {
+                balancesNumeros[i.j] = balanceActual - montoInt;
+                listaJugadas.push({ lot: i.lot, num: i.j, monto: i.m });
+            }
+        });
+
+        localStorage.setItem('balancesNumerosRomasport', JSON.stringify(balancesNumeros));
+        if (listaJugadas.length > 0) {
+            loteriaSeleccionada = listaJugadas[0].lot;
+            document.getElementById('lblLoteriaActiva').innerText = loteriaSeleccionada;
+        }
+
+        renderizarListaJugadasPro();
+        actualizarPantallaCampos();
+        cerrarMenuLateral();
+        alert("✅ ¡Jugadas copiadas al terminal!");
+    }
+
+    function copiarTicketActualModal() {
+        if (!ultimoTicketGenerado) return;
+        repetirTicketPorId(ultimoTicketGenerado.id);
+        document.getElementById('modal').style.display = 'none';
+    }
+
+    function cancelarTicketPorId(id) {
+        let historial = JSON.parse(localStorage.getItem('historialRomasport')) || [];
+        let idx = historial.findIndex(x => x.id === id);
+        if (idx === -1) return;
+
         let t = historial[idx];
         let ahoraMismo = Date.now();
         const CINCO_MINUTOS_MS = 5 * 60 * 1000;
 
         if ((ahoraMismo - (t.timestamp || 0)) > CINCO_MINUTOS_MS) {
             alert("❌ El plazo de 5 minutos para cancelar este ticket ya ha expirado.");
-            cambiarTabMenu('tickets');
+            renderizarHistorialTickets();
             return;
         }
 
         if (confirm("¿Estás seguro de cancelar este ticket?")) {
             historial[idx].cancelado = true;
             localStorage.setItem('historialRomasport', JSON.stringify(historial));
-            cambiarTabMenu('tickets');
+            renderizarHistorialTickets();
         }
     }
 
@@ -560,21 +678,20 @@
             total: total, vendedor: miDispositivo, cancelado: false
         };
 
+        ultimoTicketGenerado = ticketObj;
+
         let historial = JSON.parse(localStorage.getItem('historialRomasport')) || [];
         historial.unshift(ticketObj);
         localStorage.setItem('historialRomasport', JSON.stringify(historial));
 
         if (window.db && window.firebaseFirestore) {
             try {
-                const { doc, setDoc } = window.firebaseFirestore;
-                await setDoc(doc(window.db, "tickets", String(ticketNum)), ticketObj);
-            } catch (e) {
-                console.error("Error al enviar ticket a Firebase:", e);
-            }
+                await window.firebaseFirestore.setDoc(window.firebaseFirestore.doc(window.db, "tickets", String(ticketNum)), ticketObj);
+            } catch (e) {}
         }
 
         let texto = `================================\n          SACATE SPORT          \n         ** ORIGINAL **         \n================================\n Fecha: ${fechaHora}\n Vendedor: ${miDispositivo}\n Ticket #: ${ticketNum}\n--------------------------------\n`;
-        listaJugadas.forEach(i => { texto += ` Lotería: ${i.lot}\n Núm: ${i.num}      Monto: $${i.monto}\n\n`; });
+        listaJugadas.forEach(i => { texto += ` Lotería: ${i.lot}\n Núm: ${i.num}      Monto: $${i.m}\n\n`; });
         texto += `--------------------------------\n       TOTAL A PAGAR: $${total.toFixed(2)}\n================================\n            PREMIOS:            \n      1ra:60 | 2da:24 | 3ra:12    \n    PALÉ: 1300 | TRIPLETA: 10000  \n================================\n     ¡SIN TICKET NO SE PAGA!    \n================================`;
 
         document.getElementById('receiptContent').innerText = texto;
@@ -601,5 +718,5 @@
 
     actualizarPantallaCampos();
 </script>
-</body>
+<script src="fix-monto.js"></script></body>
 </html>

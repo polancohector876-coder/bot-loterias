@@ -1,0 +1,10 @@
+{
+  "name": "SACATE SPORT",
+  "short_name": "SACATE",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "fullscreen",
+  "background_color": "#121212",
+  "theme_color": "#00bcd4",
+  "orientation": "portrait"
+}

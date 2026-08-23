@@ -2,13 +2,12 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SACATE SPORT - Administración Maestra</title>
-    
-    <!-- FIREBASE SDKs -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Maestro Admin - SACATE SPORT</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBN9HbGRgVl0NEVX0zjxMz9qrssmDAWKco",
@@ -23,396 +22,414 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         window.db = db;
-        window.firebaseFirestore = { doc, setDoc, getDoc, onSnapshot, collection, getDocs };
+        window.firebaseFirestore = { doc, onSnapshot, setDoc, getDoc, collection };
+
+        // Escuchar tickets en tiempo real
+        onSnapshot(collection(db, "tickets"), (snapshot) => {
+            window.todosLosTickets = [];
+            snapshot.forEach(docSnap => window.todosLosTickets.push(docSnap.data()));
+            if (typeof window.renderizarTodo === 'function') window.renderizarTodo();
+        });
+
+        // Escuchar terminales registradas
+        onSnapshot(collection(db, "terminales"), (snapshot) => {
+            window.todasLasTerminales = [];
+            snapshot.forEach(docSnap => window.todasLasTerminales.push(docSnap.data()));
+            if (typeof window.renderizarTodo === 'function') window.renderizarTodo();
+        });
+
+        // Escuchar estado de bloqueo
+        onSnapshot(doc(db, "banca", "estadoMaestro"), (docSnap) => {
+            window.estadoMaestro = docSnap.exists() ? docSnap.data() : { bancaBloqueadaMaestro: false, dispositivosBloqueados: [] };
+            if (typeof window.renderizarTodo === 'function') window.renderizarTodo();
+        });
     </script>
-
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; user-select: none; }
-        body { background-color: #121212; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .admin-container { width: 100%; max-width: 480px; height: 100vh; background-color: #1e1e1e; display: flex; flex-direction: column; border: 1px solid #333; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        body { background-color: #121212; color: #fff; display: flex; justify-content: center; min-height: 100vh; padding: 10px; }
+        .admin-card { width: 100%; max-width: 700px; background: #1e1e1e; border: 1px solid #333; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+        .header { background: #00bcd4; color: #000; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; }
+        .header h2 { font-size: 18px; font-weight: bold; }
+        .btn-volver { background: #000; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 12px; }
         
-        .admin-header { background-color: #00bcd4; color: #000; padding: 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 16px; }
-        .back-btn { background: #333; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .nav-tabs { display: grid; grid-template-columns: repeat(4, 1fr); background: #252525; border-bottom: 1px solid #444; }
+        .tab-btn { background: none; border: none; color: #bbb; padding: 12px 5px; font-size: 11px; font-weight: bold; cursor: pointer; text-align: center; }
+        .tab-btn.active { background: #111; color: #00bcd4; border-bottom: 2px solid #00bcd4; }
 
-        .admin-tabs { display: flex; background: #222; border-bottom: 2px solid #444; overflow-x: auto; }
-        .admin-tab { flex: 1; padding: 12px 6px; background: none; border: none; color: #aaa; font-weight: bold; cursor: pointer; text-align: center; font-size: 11px; white-space: nowrap; }
-        .admin-tab.active { color: #00bcd4; border-bottom: 3px solid #00bcd4; background: #1a1a1a; }
+        .content { padding: 15px; flex: 1; overflow-y: auto; max-height: 82vh; }
+        
+        .card-terminal-monitoreo { background: #252525; border: 1px solid #444; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+        .terminal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 6px; }
+        
+        .grid-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+        .stat-box { background: #181818; padding: 8px; border-radius: 4px; text-align: center; border: 1px solid #333; }
+        .stat-box span { font-size: 10px; color: #aaa; display: block; }
+        .stat-box b { font-size: 13px; color: #00bcd4; }
 
-        .admin-content { flex: 1; overflow-y: auto; padding: 15px; display: none; flex-direction: column; gap: 10px; }
-        .admin-content.active-section { display: flex; }
+        .box-cuadre-comision { background: #141414; border: 1px solid #444; border-radius: 6px; padding: 10px; margin-bottom: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+        .box-cuadre-comision span { font-size: 10px; color: #bbb; display: block; margin-bottom: 2px; }
 
-        .stat-card { background: #252525; border: 1px solid #444; padding: 15px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
-        .stat-card h4 { font-size: 13px; color: #aaa; }
-        .stat-card span { font-size: 20px; font-weight: bold; color: #4caf50; }
+        .ticket-item { background: #1c1c1c; border: 1px solid #333; border-radius: 4px; padding: 8px; margin-bottom: 6px; font-size: 11px; }
 
-        .ticket-admin-card { background: #282828; border: 1px solid #444; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
-        .balance-admin-row { background: #282828; padding: 10px 12px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 6px; }
-        .device-row { background: #282828; padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-left: 4px solid #00bcd4; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; padding: 10px; flex-direction: column; }
+        #ticketToImage { background: #ffffff; width: 320px; padding: 20px; text-align: center; color: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 15px; border-radius: 4px; }
+        #ticketToImage pre { text-align: center; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; font-size: 12px; line-height: 1.4; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="admin-container">
-    
-    <div class="admin-header">
-        <span>🛡 Panel Maestro Admin</span>
-        <button class="back-btn" onclick="location.href='index.html'">⬅ Volver</button>
+<div class="admin-card">
+    <div class="header">
+        <h2>📍 Monitoreo y Cuadre de Ventas</h2>
+        <a href="index.html" class="btn-volver">⬅ Terminal</a>
     </div>
 
-    <div class="admin-tabs">
-        <button class="admin-tab active" id="btnResumen" onclick="cambiarSeccion('resumen')">Resumen</button>
-        <button class="admin-tab" id="btnTicketsAdmin" onclick="cambiarSeccion('tickets')">Tickets</button>
-        <button class="admin-tab" id="btnBalancesAdmin" onclick="cambiarSeccion('balances')">Límites</button>
-        <button class="admin-tab" id="btnResultados" onclick="cambiarSeccion('resultados')">Resultados</button>
-        <button class="admin-tab" id="btnDispositivos" onclick="cambiarSeccion('dispositivos')">Terminales</button>
+    <div class="nav-tabs">
+        <button class="tab-btn active" id="tabBtnMonitoreo" onclick="cambiarTab('monitoreo')">📱 Monitoreo</button>
+        <button class="tab-btn" id="tabBtnTickets" onclick="cambiarTab('tickets')">🗂 Todos Tickets</button>
+        <button class="tab-btn" id="tabBtnLimites" onclick="cambiarTab('limites')">🛑 Límites/Calientes</button>
+        <button class="tab-btn" id="tabBtnResultados" onclick="cambiarTab('resultados')">🏆 Resultados</button>
     </div>
 
-    <div id="secResumen" class="admin-content active-section">
-        <h3 style="color:#00bcd4;">🚨 Control de Emergencia</h3>
-        <div style="background:#2a1215; border:1px solid #c62828; padding:15px; border-radius:6px; text-align:center;">
-            <p style="font-size:12px; margin-bottom:10px; color:#ff8a80;">Bloquea o cierra las ventas en todos los teléfonos conectados al instante.</p>
-            <button id="btnPanicoMaestro" onclick="toggleEmergenciaBanca()" style="padding:12px; font-size:13px; font-weight:bold; border:none; border-radius:4px; cursor:pointer; width:100%;">Cargando...</button>
-        </div>
-
-        <h3 style="color:#00bcd4; margin-top:5px;">📈 Estadísticas del Día</h3>
-        <div class="stat-card">
-            <div><h4>VENTA TOTAL</h4><span id="lblVentaTotal" style="color:#4caf50;">$0.00</span></div>
-            <span style="font-size:24px;">💵</span>
-        </div>
-        <div class="stat-card">
-            <div><h4>TICKETS EMITIDOS</h4><span id="lblTotalTickets" style="color:#00bcd4;">0</span></div>
-            <span style="font-size:24px;">🎫</span>
-        </div>
-        <div class="stat-card">
-            <div><h4>TICKETS CANCELADOS</h4><span id="lblTotalCancelados" style="color:#ff5252;">0</span></div>
-            <span style="font-size:24px;">❌</span>
-        </div>
-    </div>
-
-    <div id="secTickets" class="admin-content">
-        <h3 style="color:#00bcd4;">🎫 Auditoría de Tickets</h3>
-        <div id="listaTicketsAdmin" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
-    </div>
-
-    <div id="secBalances" class="admin-content">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h3 style="color:#00bcd4;">⚖ Saldos por Número</h3>
-            <button onclick="reiniciarTodosBalances()" style="background:#c62828; color:#fff; border:none; padding:6px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Reiniciar a $200</button>
-        </div>
-        <div id="listaBalancesAdmin" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-top:5px;"></div>
-    </div>
-
-    <div id="secResultados" class="admin-content">
-        <h3 style="color:#00bcd4;">🎯 Publicar Resultados del Día</h3>
-        <div style="background:#252525; padding:12px; border-radius:6px; display:flex; flex-direction:column; gap:8px;">
-            <label style="font-size:12px; color:#aaa;">Seleccionar Lotería:</label>
-            <select id="selectLoteriaRes" style="padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:4px;">
-                <option value="Anguila 10 AM">Anguila 10 AM</option>
-                <option value="Gana Más">Gana Más</option>
-                <option value="Lotería Real">Lotería Real</option>
-                <option value="New York Tarde">New York Tarde</option>
-                <option value="Leidsa">Leidsa</option>
-                <option value="Lotería Nacional">Lotería Nacional</option>
-                <option value="New York Noche">New York Noche</option>
-            </select>
-
-            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px;">
-                <div>
-                    <label style="font-size:10px; color:#aaa;">1er Premio</label>
-                    <input type="text" id="res1" maxlength="2" placeholder="00" style="width:100%; padding:10px; text-align:center; font-size:18px; font-weight:bold; background:#fff; color:#000; border:none; border-radius:4px;">
-                </div>
-                <div>
-                    <label style="font-size:10px; color:#aaa;">2do Premio</label>
-                    <input type="text" id="res2" maxlength="2" placeholder="00" style="width:100%; padding:10px; text-align:center; font-size:18px; font-weight:bold; background:#fff; color:#000; border:none; border-radius:4px;">
-                </div>
-                <div>
-                    <label style="font-size:10px; color:#aaa;">3er Premio</label>
-                    <input type="text" id="res3" maxlength="2" placeholder="00" style="width:100%; padding:10px; text-align:center; font-size:18px; font-weight:bold; background:#fff; color:#000; border:none; border-radius:4px;">
-                </div>
+    <!-- PESTAÑA 1: MONITOREO Y COMISIONES -->
+    <div class="content" id="panelMonitoreo">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:#252525; padding:8px 12px; border-radius:6px;">
+            <div>
+                <label style="font-size:11px; color:#aaa; font-weight:bold;">📅 FECHA: </label>
+                <input type="date" id="filtroFechaMonitoreo" onchange="renderizarTodo()" style="background:#111; color:#00bcd4; border:1px solid #555; padding:5px 8px; border-radius:4px; font-weight:bold;">
             </div>
-
-            <button onclick="guardarResultadoNube()" style="margin-top:5px; padding:12px; background:#2e7d32; color:#fff; font-weight:bold; border:none; border-radius:4px; cursor:pointer;">💾 Guardar y Publicar en la Nube</button>
+            <button onclick="ponerFechaHoyMonitoreo()" style="background:#333; color:#fff; border:1px solid #555; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Hoy</button>
         </div>
-        <div id="listaResultadosPublicados" style="margin-top:10px;"></div>
+
+        <div id="contenedorMonitoreoTerminales">
+            <p style="color:#aaa; text-align:center; padding:20px;">Cargando terminales conectadas...</p>
+        </div>
     </div>
 
-    <div id="secDispositivos" class="admin-content">
-        <h3 style="color:#00bcd4;">📱 Terminales Conectadas</h3>
-        <p style="font-size:12px; color:#aaa;">Teléfonos registrados que han abierto la aplicación:</p>
-        <div id="listaDispositivosAdmin" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-top:5px;"></div>
+    <!-- PESTAÑA 2: AUDITORIA GENERAL DE TICKETS -->
+    <div class="content" id="panelTickets" style="display:none;">
+        <h3 style="color:#00bcd4; margin-bottom:10px; font-size:15px;">🗂 Auditoría Global de Tickets</h3>
+        <div id="resumenVentasGlobal" style="background:#00bcd4; color:#000; padding:10px; border-radius:4px; font-weight:bold; display:flex; justify-content:space-between; margin-bottom:10px;">
+            <span>TOTAL VENTAS GENERAL:</span>
+            <span id="txtTotalPeriodo">$0.00</span>
+        </div>
+        <div id="listaTicketsAdmin"><p style="color:#aaa; text-align:center; padding:20px;">Cargando tickets...</p></div>
     </div>
 
+    <!-- PESTAÑA 3: CONFIGURAR LÍMITES -->
+    <div class="content" id="panelLimites" style="display:none;">
+        <h3 style="color:#00bcd4; margin-bottom:15px;">🛑 Configurar Límites y Calientes</h3>
+        <div style="background:#252525; padding:15px; border-radius:6px; display:flex; flex-direction:column; gap:10px;">
+            <div>
+                <label style="font-size:12px; color:#aaa;">Límite Punto / Quiniela ($):</label>
+                <input type="number" id="inSueltoMax" style="width:100%; padding:8px; background:#111; border:1px solid #555; color:#fff; border-radius:4px; margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:12px; color:#aaa;">Límite Palé ($):</label>
+                <input type="number" id="inPaleMax" style="width:100%; padding:8px; background:#111; border:1px solid #555; color:#fff; border-radius:4px; margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:12px; color:#aaa;">Límite Tripleta ($):</label>
+                <input type="number" id="inTripletaMax" style="width:100%; padding:8px; background:#111; border:1px solid #555; color:#fff; border-radius:4px; margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:12px; color:#aaa;">Números / Palés Bloqueados (Separados por coma):</label>
+                <input type="text" id="inCalientes" placeholder="Ej: 7788, 1234, 99" style="width:100%; padding:8px; background:#111; border:1px solid #555; color:#fff; border-radius:4px; margin-top:4px;">
+            </div>
+            <button onclick="guardarLimitesAdmin()" style="margin-top:10px; padding:12px; background:#4caf50; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">💾 Guardar Límites de Apuesta</button>
+        </div>
+    </div>
+
+    <!-- PESTAÑA 4: RESULTADOS -->
+    <div class="content" id="panelResultados" style="display:none;">
+        <h3 style="color:#00bcd4; margin-bottom:15px;">🏆 Resultados</h3>
+        <p style="color:#aaa;">Visualización de sorteos en vivo.</p>
+    </div>
+</div>
+
+<!-- MODAL VISOR TICKET -->
+<div class="modal" id="modalVisor">
+    <div id="ticketToImage"><pre id="receiptContent"></pre></div>
+    <div style="width: 320px; display: flex; flex-direction: column; gap: 8px;">
+        <button style="padding:12px; background:#4caf50; color:white; border:none; font-weight:bold; cursor:pointer; border-radius:4px;" onclick="compartirImagen()">📲 Compartir / Reenviar Ticket</button>
+        <button style="padding:10px; background:#333; color:white; border:none; cursor:pointer; border-radius:4px;" onclick="cerrarVisor()">Cerrar</button>
+    </div>
 </div>
 
 <script>
-    let estadoBloqueoGlobal = false;
-    let dispositivosBloqueadosGlobal = [];
+    window.todosLosTickets = [];
+    window.todasLasTerminales = [];
+    window.estadoMaestro = { bancaBloqueadaMaestro: false, dispositivosBloqueados: [] };
 
-    setTimeout(() => {
-        if (window.db && window.firebaseFirestore) {
-            const { doc, onSnapshot } = window.firebaseFirestore;
-            onSnapshot(doc(window.db, "banca", "estadoMaestro"), (docSnap) => {
-                if (docSnap.exists()) {
-                    let data = docSnap.data();
-                    estadoBloqueoGlobal = data.bancaBloqueadaMaestro === true;
-                    dispositivosBloqueadosGlobal = data.dispositivosBloqueados || [];
-                    actualizarBotonPanico();
-                    if (document.getElementById('secDispositivos').classList.contains('active-section')) {
-                        cargarDispositivosAdmin();
-                    }
+    document.getElementById('filtroFechaMonitoreo').value = new Date().toISOString().split('T')[0];
+
+    function ponerFechaHoyMonitoreo() {
+        document.getElementById('filtroFechaMonitoreo').value = new Date().toISOString().split('T')[0];
+        renderizarTodo();
+    }
+
+    window.renderizarTodo = function() {
+        renderizarMonitoreo();
+        renderizarTicketsGlobal();
+    };
+
+    function renderizarMonitoreo() {
+        let cont = document.getElementById('contenedorMonitoreoTerminales');
+        let fecha = document.getElementById('filtroFechaMonitoreo').value;
+        let terms = window.todasLasTerminales || [];
+        let tickets = window.todosLosTickets || [];
+        let bloqueados = window.estadoMaestro.dispositivosBloqueados || [];
+
+        if (terms.length === 0) {
+            cont.innerHTML = '<p style="color:#aaa; text-align:center; padding:20px;">No hay terminales registradas.</p>';
+            return;
+        }
+
+        cont.innerHTML = terms.map(term => {
+            let estaBloq = bloqueados.includes(term.nombre);
+            let pctComision = term.comision !== undefined ? parseFloat(term.comision) : 0;
+
+            let ticketsVendedor = tickets.filter(t => {
+                let coincideVendedor = (t.vendedor === term.nombre);
+                if (!coincideVendedor) return false;
+                if (!fecha) return true;
+                let d = new Date(t.timestamp || 0);
+                let yyyy = d.getFullYear();
+                let mm = String(d.getMonth() + 1).padStart(2, '0');
+                let dd = String(d.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}` === fecha;
+            });
+
+            ticketsVendedor.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            let totalVendidoBruto = 0;
+            let ticketsValidos = 0;
+            let ticketsCancelados = 0;
+
+            ticketsVendedor.forEach(t => {
+                if (t.cancelado) {
+                    ticketsCancelados++;
+                } else {
+                    ticketsValidos++;
+                    totalVendidoBruto += (parseFloat(t.total) || 0);
                 }
             });
-        }
-    }, 1000);
 
-    function cambiarSeccion(seccion) {
-        ['Resumen', 'Tickets', 'Balances', 'Resultados', 'Dispositivos'].forEach(s => {
-            let elSec = document.getElementById('sec' + s);
-            let elBtn = document.getElementById('btn' + (s === 'Dispositivos' ? 'Dispositivos' : s === 'Tickets' ? 'TicketsAdmin' : s === 'Balances' ? 'BalancesAdmin' : s === 'Resultados' ? 'Resultados' : 'Resumen'));
-            if (elSec) elSec.className = 'admin-content';
-            if (elBtn) elBtn.className = 'admin-tab';
-        });
+            let gananciaVendedor = totalVendidoBruto * (pctComision / 100);
+            let netoParaBanca = totalVendidoBruto - gananciaVendedor;
 
-        let targetSec = document.getElementById('sec' + (seccion === 'resumen' ? 'Resumen' : seccion === 'tickets' ? 'Tickets' : seccion === 'balances' ? 'Balances' : seccion === 'resultados' ? 'Resultados' : 'Dispositivos'));
-        let targetBtn = document.getElementById('btn' + (seccion === 'resumen' ? 'Resumen' : seccion === 'tickets' ? 'TicketsAdmin' : seccion === 'balances' ? 'BalancesAdmin' : seccion === 'resultados' ? 'Resultados' : 'Dispositivos'));
-
-        if (targetSec) targetSec.className = 'admin-content active-section';
-        if (targetBtn) targetBtn.className = 'admin-tab active';
-
-        if (seccion === 'resumen') cargarResumen();
-        else if (seccion === 'tickets') cargarTicketsAdmin();
-        else if (seccion === 'balances') cargarBalancesAdmin();
-        else if (seccion === 'resultados') cargarResultadosAdmin();
-        else if (seccion === 'dispositivos') cargarDispositivosAdmin();
-    }
-
-    async function toggleEmergenciaBanca() {
-        let nuevoEstado = !estadoBloqueoGlobal;
-        if (window.db && window.firebaseFirestore) {
-            const { doc, setDoc } = window.firebaseFirestore;
-            await setDoc(doc(window.db, "banca", "estadoMaestro"), {
-                bancaBloqueadaMaestro: nuevoEstado,
-                dispositivosBloqueados: dispositivosBloqueadosGlobal
-            }, { merge: true });
-        }
-        if (nuevoEstado) {
-            alert("🚨 ¡ALERTA! Banca bloqueada en todas las terminales desde la nube.");
-        } else {
-            alert("✅ Banca desbloqueada con éxito.");
-        }
-    }
-
-    function actualizarBotonPanico() {
-        let btn = document.getElementById('btnPanicoMaestro');
-        if (!btn) return;
-        if (estadoBloqueoGlobal) {
-            btn.innerText = "🔒 BANCA BLOQUEADA (Clic para Abrir)";
-            btn.style.background = "#4caf50";
-        } else {
-            btn.innerText = "🛑 CERRAR TODAS LAS VENTAS (Bloquear)";
-            btn.style.background = "#c62828";
-        }
-    }
-
-    async function cargarResumen() {
-        let totalVenta = 0, cancelados = 0, totalTickets = 0;
-        if (window.db && window.firebaseFirestore) {
-            const { collection, getDocs } = window.firebaseFirestore;
-            try {
-                let querySnapshot = await getDocs(collection(window.db, "tickets"));
-                totalTickets = querySnapshot.size;
-                querySnapshot.forEach((doc) => {
-                    let t = doc.data();
-                    if (t.cancelado) cancelados++;
-                    else totalVenta += (t.total || 0);
-                });
-            } catch (e) { console.error("Error al cargar resumen:", e); }
-        }
-        
-        let elV = document.getElementById('lblVentaTotal');
-        let elT = document.getElementById('lblTotalTickets');
-        let elC = document.getElementById('lblTotalCancelados');
-
-        if (elV) elV.innerText = `$${totalVenta.toFixed(2)}`;
-        if (elT) elT.innerText = totalTickets;
-        if (elC) elC.innerText = cancelados;
-        actualizarBotonPanico();
-    }
-
-    async function cargarTicketsAdmin() {
-        let container = document.getElementById('listaTicketsAdmin');
-        if (!container) return;
-        container.innerHTML = '<p style="color:#aaa; text-align:center;">Cargando tickets de la nube...</p>';
-        
-        if (window.db && window.firebaseFirestore) {
-            const { collection, getDocs } = window.firebaseFirestore;
-            try {
-                let querySnapshot = await getDocs(collection(window.db, "tickets"));
-                let historial = [];
-                querySnapshot.forEach((doc) => { historial.push(doc.data()); });
-                
-                historial.sort((a, b) => b.timestamp - a.timestamp);
-
-                container.innerHTML = '';
-                if (historial.length === 0) { 
-                    container.innerHTML = '<p style="color:#777; text-align:center; margin-top:20px;">No hay tickets registrados.</p>'; 
-                    return; 
-                }
-
-                historial.forEach(t => {
-                    let itemsTexto = Array.isArray(t.items) ? t.items.map(i => `${i.lot}: ${i.j} ($${i.m})`).join(', ') : '';
-                    container.innerHTML += `
-                        <div class="ticket-admin-card" style="${t.cancelado ? 'opacity:0.6; text-decoration:line-through; border-color:#c62828;' : ''}">
-                            <div style="display:flex; justify-content:space-between;"><b>Ticket #${t.id}</b> <span style="color:${t.cancelado ? '#ff5252' : '#4caf50'}">${t.cancelado ? 'CANCELADO' : 'ACTIVO'}</span></div>
-                            <div><b>Vendedor:</b> ${t.vendedor || 'Terminal'} | <b>Fecha:</b> ${t.fecha}</div>
-                            <div style="color:#aaa; margin:4px 0;">${itemsTexto}</div>
-                            <div style="text-align:right; font-weight:bold;">Total: $${(t.total || 0).toFixed(2)}</div>
-                        </div>`;
-                });
-            } catch (e) {
-                container.innerHTML = '<p style="color:#ff5252; text-align:center;">Error al cargar tickets de la nube.</p>';
-            }
-        }
-    }
-
-    function cargarBalancesAdmin() {
-        let container = document.getElementById('listaBalancesAdmin');
-        if (!container) return;
-        container.innerHTML = '';
-        let balances = JSON.parse(localStorage.getItem('balancesNumerosRomasport')) || {};
-        let keys = Object.keys(balances);
-
-        if (keys.length === 0) { 
-            container.innerHTML = '<p style="color:#777; text-align:center; margin-top:20px;">Sin saldos descontados.</p>'; 
-            return; 
-        }
-
-        keys.forEach(num => {
-            let saldo = balances[num];
-            container.innerHTML += `
-                <div class="balance-admin-row">
-                    <span>Número: <b>${num}</b></span>
-                    <span style="color:${saldo <= 0 ? '#ff5252' : '#4caf50'}; font-weight:bold;">${saldo <= 0 ? 'SIN FONDO ($0.00)' : `$${saldo.toFixed(2)}`}</span>
-                </div>`;
-        });
-    }
-
-    async function guardarResultadoNube() {
-        let loteria = document.getElementById('selectLoteriaRes').value;
-        let p1 = document.getElementById('res1').value.trim();
-        let p2 = document.getElementById('res2').value.trim();
-        let p3 = document.getElementById('res3').value.trim();
-
-        if (!p1 || !p2 || !p3) {
-            alert("Por favor ingrese los tres premios (1ro, 2do y 3ro).");
-            return;
-        }
-
-        let resultadoObj = { loteria, p1, p2, p3, timestamp: Date.now() };
-
-        if (window.db && window.firebaseFirestore) {
-            const { doc, setDoc } = window.firebaseFirestore;
-            await setDoc(doc(window.db, "resultados", loteria.replace(/\s+/g, '_')), resultadoObj);
-            alert(`✅ ¡Resultados de ${loteria} publicados con éxito en la nube!`);
-            document.getElementById('res1').value = '';
-            document.getElementById('res2').value = '';
-            document.getElementById('res3').value = '';
-            cargarResultadosAdmin();
-        }
-    }
-
-    async function cargarResultadosAdmin() {
-        let container = document.getElementById('listaResultadosPublicados');
-        if (!container) return;
-        container.innerHTML = '<p style="color:#aaa; text-align:center; font-size:12px;">Cargando resultados...</p>';
-
-        if (window.db && window.firebaseFirestore) {
-            const { collection, getDocs } = window.firebaseFirestore;
-            try {
-                let querySnapshot = await getDocs(collection(window.db, "resultados"));
-                container.innerHTML = '';
-                if (querySnapshot.empty) {
-                    container.innerHTML = '<p style="color:#777; text-align:center; font-size:12px; margin-top:5px;">No hay resultados publicados hoy.</p>';
-                    return;
-                }
-                querySnapshot.forEach((docSnap) => {
-                    let r = docSnap.data();
-                    container.innerHTML += `
-                        <div style="background:#282828; border:1px solid #444; padding:8px; border-radius:4px; margin-bottom:5px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-                            <div><b>${r.loteria}</b></div>
-                            <div style="color:#4caf50; font-weight:bold;">1ra: ${r.p1} | 2da: ${r.p2} | 3ra: ${r.p3}</div>
-                        </div>`;
-                });
-            } catch (e) {
-                container.innerHTML = '<p style="color:#ff5252; text-align:center; font-size:12px;">Error al cargar resultados.</p>';
-            }
-        }
-    }
-
-    function cargarDispositivosAdmin() {
-        let container = document.getElementById('listaDispositivosAdmin');
-        if (!container) return;
-        container.innerHTML = '';
-        let dispositivos = JSON.parse(localStorage.getItem('listaDispositivosRegistrados')) || [];
-
-        if (dispositivos.length === 0) {
-            container.innerHTML = '<p style="color:#777; text-align:center; margin-top:20px;">No hay terminales registradas.</p>';
-            return;
-        }
-
-        dispositivos.forEach(nombreDev => {
-            let estaBloqueado = dispositivosBloqueadosGlobal.includes(nombreDev);
-            let botonAccion = estaBloqueado ? 
-                `<button onclick="desbloquearDispositivo('${nombreDev}')" style="background:#4caf50; color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Desbloquear</button>` : 
-                `<button onclick="bloquearDispositivo('${nombreDev}')" style="background:#c62828; color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Bloquear Teléfono</button>`;
-
-            container.innerHTML += `
-                <div class="device-row">
-                    <div>
-                        <b>📱 ${nombreDev}</b><br>
-                        <small style="color:${estaBloqueado ? '#ff5252' : '#4caf50'};">${estaBloqueado ? 'BLOQUEADO' : 'ACTIVO'}</small>
+            let ultimosTicketsHTML = ticketsVendedor.slice(0, 3).map(t => `
+                <div class="ticket-item" style="${t.cancelado ? 'opacity:0.5; text-decoration:line-through;' : ''}">
+                    <div style="display:flex; justify-content:space-between;">
+                        <b>Ticket #${t.id}</b>
+                        <span style="color:${t.cancelado ? '#ff5252' : '#4caf50'}; font-weight:bold;">$${parseFloat(t.total).toFixed(2)}</span>
                     </div>
-                    ${botonAccion}
-                </div>`;
-        });
+                    <div style="color:#aaa; font-size:10px;">${t.fecha}</div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="card-terminal-monitoreo" style="border-left: 4px solid ${estaBloq ? '#c62828' : '#00bcd4'};">
+                    <div class="terminal-header">
+                        <div>
+                            <span style="font-size:15px; font-weight:bold; color:${estaBloq ? '#ff5252' : '#00bcd4'};">📱 ${term.nombre}</span>
+                            <span style="font-size:10px; background:${estaBloq ? '#c62828' : '#2e7d32'}; color:#fff; padding:2px 5px; border-radius:3px; margin-left:6px;">
+                                ${estaBloq ? 'BLOQUEADO' : 'EN LÍNEA'}
+                            </span>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="asignarComisionPrompt('${term.nombre}', ${pctComision})" style="background:#ff9800; color:#000; border:none; padding:5px 8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px;">
+                                🏷 % Comisión (${pctComision}%)
+                            </button>
+                            <button onclick="toggleBloqueoTerminal('${term.nombre}')" style="background:${estaBloq ? '#2e7d32' : '#c62828'}; color:#fff; border:none; padding:5px 8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:11px;">
+                                ${estaBloq ? '🔓' : '🔒'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- CAJAS DE CUADRE FINANCIERO -->
+                    <div class="box-cuadre-comision">
+                        <div>
+                            <span>VENTA BRUTA</span>
+                            <b style="color:#fff; font-size:13px;">$${totalVendidoBruto.toFixed(2)}</b>
+                        </div>
+                        <div>
+                            <span>SU COMISIÓN (${pctComision}%)</span>
+                            <b style="color:#ff9800; font-size:13px;">-$${gananciaVendedor.toFixed(2)}</b>
+                        </div>
+                        <div style="background:#222; border-radius:4px; padding:2px;">
+                            <span style="color:#00bcd4; font-weight:bold;">DEBE ENTREGAR</span>
+                            <b style="color:#4caf50; font-size:14px;">$${netoParaBanca.toFixed(2)}</b>
+                        </div>
+                    </div>
+
+                    <div class="grid-stats">
+                        <div class="stat-box">
+                            <span>TICKETS ACTIVOS</span>
+                            <b>${ticketsValidos}</b>
+                        </div>
+                        <div class="stat-box">
+                            <span>ANULADOS</span>
+                            <b style="color:#ff5252;">${ticketsCancelados}</b>
+                        </div>
+                        <div class="stat-box">
+                            <span>ÚLTIMO ACCESO</span>
+                            <b style="font-size:10px; color:#aaa;">${term.ultimoAcceso ? term.ultimoAcceso.split(',')[1] || term.ultimoAcceso : 'Hoy'}</b>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:6px;">
+                        <span style="font-size:11px; color:#888; font-weight:bold;">ÚLTIMAS JUGADAS:</span>
+                        <div style="margin-top:4px;">
+                            ${ultimosTicketsHTML || '<div style="color:#666; font-size:10px; padding:4px 0;">Sin ventas en esta fecha.</div>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
-    async function bloquearDispositivo(nombreDev) {
-        if (confirm(`¿Bloquear a "${nombreDev}"?`)) {
-            if (!dispositivosBloqueadosGlobal.includes(nombreDev)) {
-                dispositivosBloqueadosGlobal.push(nombreDev);
-            }
-            if (window.db && window.firebaseFirestore) {
-                const { doc, setDoc } = window.firebaseFirestore;
-                await setDoc(doc(window.db, "banca", "estadoMaestro"), {
-                    bancaBloqueadaMaestro: estadoBloqueoGlobal,
-                    dispositivosBloqueados: dispositivosBloqueadosGlobal
-                }, { merge: true });
-            }
-            cargarDispositivosAdmin();
+    async function asignarComisionPrompt(nombreTerm, comisionActual) {
+        let nuevoPorcentaje = prompt(`Asignar porcentaje de comisión a "${nombreTerm}" (ejemplo: 20 para 20%, 30 para 30%):`, comisionActual);
+        if (nuevoPorcentaje === null) return;
+        
+        let pct = parseFloat(nuevoPorcentaje);
+        if (isNaN(pct) || pct < 0 || pct > 100) {
+            alert("❌ Porcentaje inválido. Debe estar entre 0 y 100.");
+            return;
+        }
+
+        if (window.db && window.firebaseFirestore) {
+            await window.firebaseFirestore.setDoc(window.firebaseFirestore.doc(window.db, "terminales", nombreTerm), {
+                comision: pct
+            }, { merge: true });
+            alert(`✅ Comisión de ${pct}% asignada a ${nombreTerm}`);
         }
     }
 
-    async function desbloquearDispositivo(nombreDev) {
-        dispositivosBloqueadosGlobal = dispositivosBloqueadosGlobal.filter(d => d !== nombreDev);
+    function renderizarTicketsGlobal() {
+        let cont = document.getElementById('listaTicketsAdmin');
+        let fecha = document.getElementById('filtroFechaMonitoreo').value;
+        let tickets = window.todosLosTickets || [];
+
+        tickets.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        let filtrados = tickets.filter(t => {
+            if (!fecha) return true;
+            let d = new Date(t.timestamp || 0);
+            let yyyy = d.getFullYear();
+            let mm = String(d.getMonth() + 1).padStart(2, '0');
+            let dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}` === fecha;
+        });
+
+        let totalPeriodo = 0;
+        filtrados.forEach(t => { if (!t.cancelado) totalPeriodo += (parseFloat(t.total) || 0); });
+        document.getElementById('txtTotalPeriodo').innerText = `$${totalPeriodo.toFixed(2)}`;
+
+        if (filtrados.length === 0) {
+            cont.innerHTML = '<p style="color:#aaa; text-align:center; padding:20px;">No hay tickets en esta fecha.</p>';
+            return;
+        }
+
+        cont.innerHTML = filtrados.map(t => `
+            <div class="ticket-item" style="${t.cancelado ? 'opacity:0.6; text-decoration:line-through;' : ''}">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <b>Ticket #${t.id} - ${t.vendedor || 'Terminal'}</b>
+                    <button onclick="abrirVisorTicket(${t.id})" style="background:#00bcd4; color:#000; border:none; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold; cursor:pointer;">👁 Ver</button>
+                </div>
+                <div style="color:#aaa; font-size:10px;">${t.fecha} | Total: <b>$${parseFloat(t.total).toFixed(2)}</b></div>
+            </div>
+        `).join('');
+    }
+
+    async function toggleBloqueoTerminal(nombreTerm) {
+        let bloqueados = window.estadoMaestro.dispositivosBloqueados || [];
+        if (bloqueados.includes(nombreTerm)) {
+            bloqueados = bloqueados.filter(x => x !== nombreTerm);
+        } else {
+            bloqueados.push(nombreTerm);
+        }
+
         if (window.db && window.firebaseFirestore) {
-            const { doc, setDoc } = window.firebaseFirestore;
-            await setDoc(doc(window.db, "banca", "estadoMaestro"), {
-                bancaBloqueadaMaestro: estadoBloqueoGlobal,
-                dispositivosBloqueados: dispositivosBloqueadosGlobal
+            await window.firebaseFirestore.setDoc(window.firebaseFirestore.doc(window.db, "banca", "estadoMaestro"), {
+                bancaBloqueadaMaestro: window.estadoMaestro.bancaBloqueadaMaestro || false,
+                dispositivosBloqueados: bloqueados
             }, { merge: true });
         }
-        cargarDispositivosAdmin();
     }
 
-    function reiniciarTodosBalances() {
-        if (confirm("¿Restablecer balance de todos los números a $200.00?")) {
-            localStorage.removeItem('balancesNumerosRomasport');
-            cargarBalancesAdmin();
+    function abrirVisorTicket(id) {
+        let t = (window.todosLosTickets || []).find(x => x.id === id);
+        if (!t) return;
+
+        let texto = `================================\n          SACATE SPORT          \n         ** ORIGINAL **         \n================================\n Fecha: ${t.fecha}\n Vendedor: ${t.vendedor}\n Ticket #: ${t.id}\n--------------------------------\n`;
+        (t.items || []).forEach(i => { texto += ` Lotería: ${i.lot}\n Núm: ${i.j}      Monto: $${i.m}\n\n`; });
+        texto += `--------------------------------\n       TOTAL A PAGAR: $${parseFloat(t.total).toFixed(2)}\n================================\n            PREMIOS:            \n      1ra:60 | 2da:24 | 3ra:12    \n    PALÉ: 1300 | TRIPLETA: 10000  \n================================\n     ¡SIN TICKET NO SE PAGA!    \n================================`;
+
+        document.getElementById('receiptContent').innerText = texto;
+        document.getElementById('modalVisor').style.display = 'flex';
+    }
+
+    function cerrarVisor() { document.getElementById('modalVisor').style.display = 'none'; }
+
+    async function compartirImagen() {
+        let el = document.getElementById('ticketToImage');
+        try {
+            const canvas = await html2canvas(el, { scale: 2 });
+            canvas.toBlob(async function(blob) {
+                let file = new File([blob], 'ticket.png', { type: 'image/png' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({ files: [file], title: 'Ticket SACATE SPORT', text: 'Ticket de Venta' });
+                } else {
+                    let url = URL.createObjectURL(blob);
+                    let a = document.createElement('a'); a.href = url; a.download = 'ticket.png'; a.click();
+                }
+            });
+        } catch (e) { alert("Error al generar imagen."); }
+    }
+
+    function cambiarTab(tab) {
+        document.getElementById('panelMonitoreo').style.display = tab === 'monitoreo' ? 'block' : 'none';
+        document.getElementById('panelTickets').style.display = tab === 'tickets' ? 'block' : 'none';
+        document.getElementById('panelLimites').style.display = tab === 'limites' ? 'block' : 'none';
+        document.getElementById('panelResultados').style.display = tab === 'resultados' ? 'block' : 'none';
+
+        document.getElementById('tabBtnMonitoreo').className = tab === 'monitoreo' ? 'tab-btn active' : 'tab-btn';
+        document.getElementById('tabBtnTickets').className = tab === 'tickets' ? 'tab-btn active' : 'tab-btn';
+        document.getElementById('tabBtnLimites').className = tab === 'limites' ? 'tab-btn active' : 'tab-btn';
+        document.getElementById('tabBtnResultados').className = tab === 'resultados' ? 'tab-btn active' : 'tab-btn';
+
+        if (tab === 'limites') cargarLimitesAdmin();
+    }
+
+    async function cargarLimitesAdmin() {
+        if (window.db && window.firebaseFirestore) {
+            let docSnap = await window.firebaseFirestore.getDoc(window.firebaseFirestore.doc(window.db, "configuracion", "limites_jugadas"));
+            if (docSnap.exists()) {
+                let d = docSnap.data();
+                document.getElementById('inSueltoMax').value = d.sueltoMax || '';
+                document.getElementById('inPaleMax').value = d.paleMax || '';
+                document.getElementById('inTripletaMax').value = d.tripletaMax || '';
+                document.getElementById('inCalientes').value = (d.calientes || []).join(', ');
+            }
         }
     }
 
-    cargarResumen();
+    async function guardarLimitesAdmin() {
+        let cal = document.getElementById('inCalientes').value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        let configObj = {
+            sueltoMax: parseFloat(document.getElementById('inSueltoMax').value) || 0,
+            paleMax: parseFloat(document.getElementById('inPaleMax').value) || 0,
+            tripletaMax: parseFloat(document.getElementById('inTripletaMax').value) || 0,
+            calientes: cal
+        };
+
+        if (window.db && window.firebaseFirestore) {
+            await window.firebaseFirestore.setDoc(window.firebaseFirestore.doc(window.db, "configuracion", "limites_jugadas"), configObj);
+            alert("💾 ¡Límites guardados!");
+        }
+    }
 </script>
 </body>
 </html>

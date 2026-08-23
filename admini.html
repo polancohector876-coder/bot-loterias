@@ -364,7 +364,7 @@
         if (!t) return;
 
         let texto = `================================\n          SACATE SPORT          \n         ** ORIGINAL **         \n================================\n Fecha: ${t.fecha}\n Vendedor: ${t.vendedor}\n Ticket #: ${t.id}\n--------------------------------\n`;
-        (t.items || []).forEach(i => { texto += ` Lotería: ${i.lot}\n Núm: ${i.j}      Monto: $${i.m}\n\n`; });
+        (t.items || []).forEach(i => { texto += ` Lotería: ${i.lot}\n Núm: ${i.j}      Monto: $${j.monto || j.amount || j.valor || j.total || "0.00"}\n\n`; });
         texto += `--------------------------------\n       TOTAL A PAGAR: $${parseFloat(t.total).toFixed(2)}\n================================\n            PREMIOS:            \n      1ra:60 | 2da:24 | 3ra:12    \n    PALÉ: 1300 | TRIPLETA: 10000  \n================================\n     ¡SIN TICKET NO SE PAGA!    \n================================`;
 
         document.getElementById('receiptContent').innerText = texto;
